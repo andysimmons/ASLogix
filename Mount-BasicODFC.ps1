@@ -172,7 +172,7 @@ function Initialize-ODFC
                 'rescan',
                 'list volume'
             )
-            $volInfo = (Invoke-DiskPart -Script 'list volume' -ScriptFile "$dpScriptFile-2.txt") -match $volNamePattern
+            $volInfo = (Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-2.txt") -match $volNamePattern
             "Volume info: $volInfo"
             $volNumber = [int] ([regex]::Match($volInfo, $volNumberPattern)).Value
             "Volume number: $volNumber"
