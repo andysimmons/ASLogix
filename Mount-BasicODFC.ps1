@@ -161,13 +161,18 @@ function Initialize-ODFC
             "Attaching Outlook data file container '$FilePath'"
             $dpScript = @(
                 "select vdisk file='$FilePath'",
-                "attach vdisk"
+                "attach vdisk",
+                "rescan"
             )
-            Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile.1" -LogFile $dpLogFile
+            Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-1.txt" -LogFile $dpLogFile
 
             # parse volume info
             "Retrieving volume information"
-            $volInfo = (Invoke-DiskPart -Script 'list volume' -ScriptFile "$dpScriptFile.2") -match $volNamePattern
+            $dpScript = @(
+                'rescan',
+                'list volume'
+            )
+            $volInfo = (Invoke-DiskPart -Script 'list volume' -ScriptFile "$dpScriptFile-2.txt") -match $volNamePattern
             "Volume info: $volInfo"
             $volNumber = [int] ([regex]::Match($volInfo, $volNumberPattern)).Value
             "Volume number: $volNumber"
@@ -182,7 +187,7 @@ function Initialize-ODFC
                 "rescan",
                 "assign mount='$MountPoint'"
             )  
-            Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile.3" -LogFile $dpLogFile
+            Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-3.txt" -LogFile $dpLogFile
 
             $mountAttempted = $true
         }
