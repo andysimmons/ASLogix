@@ -18,10 +18,7 @@ param (
     $TempDir = 'C:\Temp',
 
     [int]
-    $MaxSizeMB = 5120,
-
-    [int]
-    $DiskPartColWidth = 11
+    $MaxSizeMB = 5120
 )
 
 $dpScriptFile = [IO.FileInfo] "$TempDir\dpScript"
@@ -43,7 +40,10 @@ function Initialize-ODFC
         $MountPoint,
 
         [string]
-        $VolumeLabel = 'ODFC'
+        $VolumeLabel = 'ODFC',
+        
+        [int]
+        $DiskPartColWidth = 11
     )
 
     $mountAttempted = $false
@@ -154,7 +154,7 @@ function Initialize-ODFC
                 $volNamePattern = $VolumeLabel.Substring(0, $DiskPartColWidth) 
             }
             else { $volNamePattern = $VolumeLabel }                                          
-            $volNamePattern = "^[\s]+Volume [\d]+.+{0}" -f [regex]::Escape($volNamePattern)
+            $volNamePattern = "^[\s]+Volume [\d]+.+$([regex]::Escape($volNamePattern))"
             $volNumberPattern = '(?<=^[\s]+Volume )[\d]+'
 
             # attach the VHD
@@ -168,8 +168,10 @@ function Initialize-ODFC
             # parse volume info
             "Retrieving volume information"
             $volInfo = (Invoke-DiskPart -Script 'list volume' -ScriptFile "$dpScriptFile.2") -match $volNamePattern
+            "Volume info: $volInfo"
             $volNumber = [int] ([regex]::Match($volInfo, $volNumberPattern)).Value
-            
+            "Volume number: $volNumber"
+
             # mount up
             "Mounting '$FilePath' to '$MountPoint'"
             $dpScript = @(
