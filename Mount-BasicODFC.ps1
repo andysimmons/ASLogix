@@ -167,8 +167,6 @@ function Initialize-ODFC
 
             # parse volume info
             "Retrieving volume information"
-            $idpParams.Script = 'list volume'
-            $idpParams.LogFile = $null
             $volInfo = (Invoke-DiskPart -Script 'list volume' -ScriptFile "$dpScriptFile.2") -match $volNamePattern
             $volNumber = [int] ([regex]::Match($volInfo, $volNumberPattern)).Value
             
