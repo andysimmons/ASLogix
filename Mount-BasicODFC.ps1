@@ -21,6 +21,7 @@ param (
     $MaxSizeMB = 5120
 )
 
+# git check - ignore this
 $dpScriptFile = [IO.FileInfo] "$TempDir\dpScript"
 $transcriptFile = [IO.FileInfo] "$TempDir\odfcLog-login.txt"
 $dpLogFile = [IO.FileInfo] "$TempDir\dpLog.txt"
