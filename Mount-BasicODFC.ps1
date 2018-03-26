@@ -3,7 +3,7 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param (
     [IO.DirectoryInfo]
-    $ShareRoot = '\\slbctxaldfs01\AppLayeringTestFS\ODFC',
+    $ShareRoot = '\\slbctxdfs01\AppLayeringTestFS\ODFC',
 
     [string]
     $UserDir = $env:USERNAME,
@@ -21,11 +21,7 @@ param (
     $MaxSizeMB = 5120
 )
 
-# git check - ignore this
-$dpScriptFile = [IO.FileInfo] "$TempDir\dpScript"
 $transcriptFile = [IO.FileInfo] "$TempDir\odfcLog-login.txt"
-$dpLogFile = [IO.FileInfo] "$TempDir\dpLog.txt"
-
 Start-Transcript -Path $transcriptFile
 
 # need to split this up into simpler functions
@@ -42,13 +38,18 @@ function Initialize-ODFC
 
         [string]
         $VolumeLabel = 'ODFC',
+
+        [IO.DirectoryInfo]
+        $TempDir = $TempDir,
         
         [int]
         $DiskPartColWidth = 11
     )
 
     $mountAttempted = $false
-
+    $dpScriptFile = [IO.FileInfo] "$TempDir\dpScript"
+    $dpLogFile = [IO.FileInfo] "$TempDir\dpLog.txt"
+    
     if (!$MountPoint.Exists) 
     {
         if ($PSCmdlet.ShouldProcess($MountPoint.FullName, 'CREATE DIRECTORY'))
@@ -128,9 +129,7 @@ function Initialize-ODFC
                     "assign mount='$MountPoint'",
                     "format quick fs=ntfs label='$VolumeLabel'"
                 )
-
-                $dpScript | Out-File -FilePath $dpScriptFile -Encoding ascii -Force -ErrorAction Stop
-                diskpart.exe /s $dpScriptFile > $dpLogFile
+                Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile.txt" -LogFile $dpLogFile
                 $mountAttempted = $true
             }
             catch
@@ -146,8 +145,9 @@ function Initialize-ODFC
         
         try
         {
-            # Win7 can't run the storage management cmdlets, and diskpart is awful, so I'm sorry if you're
-            # trying to read this. Remounting requires multiple diskpart scripts/invocations.
+            # Win7 can't run the storage management cmdlets, meaning we need diskpart scripts. Apologies
+            # to anyone reading this. Remounting requires multiple diskpart scripts/invocations, along
+            # with some excessive rescanning to keep up with all the async operations.
 
             # build some patterns we can use to parse volume information from diskpart output
             if ($VolumeLabel.Length -gt $DiskPartColWidth)
@@ -158,16 +158,18 @@ function Initialize-ODFC
             $volNamePattern = "^[\s]+Volume [\d]+.+$([regex]::Escape($volNamePattern))"
             $volNumberPattern = '(?<=^[\s]+Volume )[\d]+'
 
-            # attach the VHD
+            # diskpart script 1 - attach the VHD
             "Attaching Outlook data file container '$FilePath'"
             $dpScript = @(
                 "select vdisk file='$FilePath'",
-                "attach vdisk",
-                "rescan"
+                'attach vdisk',
+                'rescan'
             )
             Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-1.txt" -LogFile $dpLogFile
 
-            # parse volume info
+            # diskpart script 2 - parse volume info 
+            # These back-to-back rescans are deliberate. For some reason, diskpart
+            # doesn't see the new volume without 2 of them ...
             "Retrieving volume information"
             $dpScript = @(
                 'rescan',
@@ -178,14 +180,12 @@ function Initialize-ODFC
             $volNumber = [int] ([regex]::Match($volInfo, $volNumberPattern)).Value
             "Volume number: $volNumber"
 
-            # mount up
+            # diskpart script 3 - mount up
             "Mounting '$FilePath' to '$MountPoint'"
             $dpScript = @(
                 "select vdisk file='$FilePath'",
-                "select partition 1",
-                "rescan",
                 "select volume $volNumber",
-                "rescan",
+                'rescan',
                 "assign mount='$MountPoint'"
             )  
             Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-3.txt" -LogFile $dpLogFile
