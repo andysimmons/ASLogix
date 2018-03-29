@@ -20,10 +20,17 @@ param (
     [int]
     $MaxSizeMB = 5120
 )
+<#
+todo: workaround for DiskPart file lock issue
+
+DiskPart has encountered an error: The process cannot access the file because it is being used by another process.
+See the System Event Log for more information.
+#>
 
 $transcriptFile = [IO.FileInfo] "$TempDir\odfcLog-login.txt"
 Start-Transcript -Path $transcriptFile
 
+#region Functions
 function Initialize-ODFC
 {
     [CmdletBinding(SupportsShouldProcess)]
@@ -155,6 +162,7 @@ function Initialize-ODFC
             else { $volNamePattern = $VolumeLabel }                                          
             $volNamePattern = "^[\s]+Volume [\d]+.+$([regex]::Escape($volNamePattern))"
             $volNumberPattern = '(?<=^[\s]+Volume )[\d]+'
+            $errPattern = "(?<=DiskPart has encountered an error: ).+$"
 
             # diskpart script 1 - attach the VHD
             "Attaching Outlook data file container '$FilePath'"
@@ -165,6 +173,12 @@ function Initialize-ODFC
             )
             Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-1.txt" -LogFile $dpLogFile
 
+            # If DiskPart encountered an error, throw it
+            $dpLog = Get-Content -Path $dpLogFile
+            $errDetail = [regex]::Match($dpLog, $errPattern).Value
+
+            if ($errDetail) { throw $errDetail }
+
             # diskpart script 2 - parse volume info 
             # These back-to-back rescans are deliberate. For some reason, diskpart
             # doesn't see the new volume without 2 of them ...
@@ -174,9 +188,11 @@ function Initialize-ODFC
                 'list volume'
             )
             $volInfo = (Invoke-DiskPart -Script $dpScript -ScriptFile "$dpScriptFile-2.txt") -match $volNamePattern
-            "Volume info: $volInfo"
+            "Volume Info (parsed): $volInfo"
             $volNumber = [int] ([regex]::Match($volInfo, $volNumberPattern)).Value
-            "Volume number: $volNumber"
+            "Volume Number (parsed): $volNumber"
+            
+            if (!$volNumber) { throw "Couldn't parse volume info from DiskPart." }
 
             # diskpart script 3 - mount up
             "Mounting '$FilePath' to '$MountPoint'"
@@ -192,8 +208,7 @@ function Initialize-ODFC
         }
         catch
         { 
-            Write-Error "Failed to mount roaming container '$FilePath' at '$MountPoint'!"
-            throw $_.Exception 
+            throw "Failed to mount roaming container '$FilePath' at '$MountPoint'! $($_.Exception.Message)"
         }
     }
 
@@ -308,8 +323,9 @@ function Write-Log
     }
     Write-EventLog @welParams
 }
+#endregion Functions
 
-# Main
+#region Main
 try
 { 
     $filePath = "$ShareRoot\$UserDir\$FileName"
@@ -340,3 +356,4 @@ catch
     }
     Write-Log @wlParams
 }
+#endregion Main
