@@ -38,7 +38,6 @@ param (
     $MaxSizeMB = 5120
 )
 
-
 #region Functions
 <#
 .SYNOPSIS
@@ -459,9 +458,6 @@ function Write-LoveNote
         [Parameter(Mandatory, ValueFromPipeline)]
         [IO.FileInfo[]]
         $FilePath,
-        
-        [string]
-        $Extension = "info",
 
         [Parameter(Mandatory)]
         [ValidateSet('DiskPart')]
@@ -497,7 +493,7 @@ function Write-LoveNote
                 PvsTargetSummary = $pvsInfo
             }
 
-            $outFile = "{0}\{1}.{2}" -f $f.Directory, $f.BaseName, $Extension 
+            $outFile = "{0}\{1}-ClientInfo.json" -f $f.Directory, $f.BaseName
             "Writing love note: $outFile"
             ConvertTo-Json -InputObject $summary | Out-File -FilePath $outFile -Force 
         }
