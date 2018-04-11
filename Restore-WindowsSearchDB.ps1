@@ -1,8 +1,15 @@
+#Requires -RunAsAdministrator
+#Requires -Version 4.0
 [CmdletBinding(SupportsShouldProcess)]
 param (
 	[IO.DirectoryInfo]
-	$ContainerPath = 'C:\ODFC'
+	$ContainerPath = 'C:\ODFC',
+
+	[IO.FileInfo]
+	$Transcript = 'C:\Temp\RestoreWinSearchDB-transcript.txt'
 )
+
+if ($Transcript) { Start-Transcript -Path $Transcript }
 
 function New-SymLink
 {
@@ -35,18 +42,20 @@ function New-SymLink
 	}
 }
 
-Set-Service -Name 'WSearch' -StartupType 'Disabled' -Status 'Stopped'
+Set-Service -Name 'WSearch' -StartupType 'Disabled'
+Stop-Service -Name 'WSearch' -Force
 
 [IO.DirectoryInfo] $winSearchDir = Split-Path (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Search').DataDirectory
 
 if ($winSearchDir.Exists -and $PSCmdlet.ShouldProcess($winSearchDir, 'RENAME'))
 {
-	Move-Item -Path "$winSearchDir" -Destination "$winSearchDir.old"
+	Move-Item -Path "$winSearchDir" -Destination "$winSearchDir.old" -Force
 }
 if (-not $ContainerPath.Exists)
 { 
 	New-Item -ItemType 'Directory' -Path $ContainerPath 
 }
-New-SymLink -Link $winSearchDir -Target $ContainerPath
+New-SymLink -Link $winSearchDir.FullName -Target $ContainerPath.FullName
 
-Set-Service -Name 'WSearch' -StartupType 'Manual' -Status 'Running'
+Set-Service -Name 'WSearch' -StartupType 'Manual'
+Start-Service -Name 'WSearch'
