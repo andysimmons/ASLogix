@@ -22,7 +22,6 @@ function Get-NonPersistentAzureADDevice
         [string]
         $ODataFilter = "startswith(displayName,'xd')"
     )
-
     
     Write-Verbose "[$(Get-Date -format G)] Pulling list of Azure AD devices. This may take a few minutes."
     $aadDevices = Get-AzureADDevice -Filter $ODataFilter -All:$true
@@ -86,8 +85,7 @@ function Remove-AzureADDeviceSP
         {
             if ($PSCmdlet.ShouldProcess($id, 'Remove')) 
             {
-                # Remove-AzureADDevice -ObjectId $id
-                Write-Warning "Placeholder: Remove-AzureADDevice -ObjectId $id"
+                Remove-AzureADDevice -ObjectId "$id"
             }
         }
     }
@@ -95,6 +93,8 @@ function Remove-AzureADDeviceSP
 #endregion functions
 
 #region main
+Connect-AzureAD
+
 $npDevices = Get-NonPersistentAzureADDevice
 $staleNonPersistents = @(Select-StaleAzureADDevice -Device $npDevices -MaxAgeInDays $MaxAgeInDays)
 
