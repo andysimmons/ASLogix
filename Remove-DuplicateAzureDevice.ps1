@@ -90,10 +90,20 @@ function Remove-AzureADDeviceSP
         }
     }
 }
+
+function Test-AzureADConnection 
+{
+    try 
+    { 
+        Get-AzureADDomain -ErrorAction Stop | Out-Null
+        return $true
+    }
+    catch { return $false }
+}
 #endregion functions
 
 #region main
-Connect-AzureAD
+if (!(Test-AzureADConnection)) { Connect-AzureAD }
 
 $npDevices = Get-NonPersistentAzureADDevice
 $staleNonPersistents = @(Select-StaleAzureADDevice -Device $npDevices -MaxAgeInDays $MaxAgeInDays)
