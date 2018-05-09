@@ -164,7 +164,11 @@ function Test-AzureADConnection
 #endregion functions
 
 #region main
-if (!(Test-AzureADConnection)) { Connect-AzureAD }
+if (!(Test-AzureADConnection)) 
+{ 
+    try   { Connect-AzureAD -ErrorAction Stop }
+    catch { throw "Couldn't connect to Azure AD. Bailing.`n$($_.Exception.Message)" }
+}
 
 $npDevices = Get-NonPersistentAzureADDevice
 $staleNonPersistents = @(Select-StaleAzureADDevice -Device $npDevices -MaxAgeInDays $MaxAgeInDays)
