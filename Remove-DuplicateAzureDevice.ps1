@@ -61,8 +61,7 @@ function Get-NonPersistentAzureADDevice
         [string]
         $ODataFilter = "startswith(displayName,'xd')"
     )
-    
-    Write-Output "[$(Get-Date -format G)] Pulling list of Azure AD devices. This may take a few minutes."
+  
     $aadDevices = Get-AzureADDevice -Filter $ODataFilter -All:$true
 
     # return the interesting devices 
@@ -87,11 +86,11 @@ function Select-StaleAzureADDevice
     )
     $now = Get-Date
 
-    Write-Output "[$(Get-Date -format G)] Grouping duplicate device objects. This may take a minute."
-    $groups = $Device | Group-Object -Property 'DisplayName'
+    Write-Verbose "[$(Get-Date -format G)] Grouping duplicate device objects."
+    $groups = $Device | Sort-Object -Property 'DisplayName' | Group-Object -Property 'DisplayName'
     $i = 0
 
-    Write-Output "[$(Get-Date -format G)] Identifying stale devices."
+    Write-Verbose "[$(Get-Date -format G)] Identifying stale devices."
     foreach ($g in $groups)
     {
         $i++
@@ -164,18 +163,29 @@ function Test-AzureADConnection
 #endregion functions
 
 #region main
-if (!(Test-AzureADConnection)) 
+$alreadyConnected = Test-AzureADConnection
+if (!$alreadyConnected) 
 { 
-    try   { Connect-AzureAD -ErrorAction Stop }
+    try
+    {
+        # Ha. Connect-AzureAD implements ShouldProcess() while Remove-AzureADDevice does not.
+        # We need a connection to simulate everything else. Overriding $WhatIfPreference, and will
+        # disconnect before exiting.
+        Connect-AzureAD -WhatIf:$false -ErrorAction Stop
+    }
     catch { throw "Couldn't connect to Azure AD. Bailing.`n$($_.Exception.Message)" }
 }
 
+Write-Output "[$(Get-Date -format G)] Pulling list of non-persistent Azure AD devices. This may take a few minutes."
 $npDevices = Get-NonPersistentAzureADDevice
+
+Write-Output "[$(Get-Date -format G)] Analyzing $($npDevices.Count) devices."
 $staleNonPersistents = @(Select-StaleAzureADDevice -Device $npDevices -MaxAgeInDays $MaxAgeInDays)
 
 if (!$staleNonPersistents)
 {
     Write-Output "[$(Get-Date -format G)] Nothing to do."
+    if (!$alreadyConnected) { Disconnect-AzureAD }
     exit
 }
 
@@ -191,4 +201,7 @@ Write-Output "[$(Get-Date -format G)] Found $($staleNonPersistents.Count) device
 
 # remove devices (via wrapper function)
 $staleNonPersistents | Remove-AzureADDeviceSP
+
+if (!$alreadyConnected) { Disconnect-AzureAD }
+Write-Output "[$(Get-Date -format G)] Done."
 #endregion main
