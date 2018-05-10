@@ -185,7 +185,7 @@ $staleNonPersistents = @(Select-StaleAzureADDevice -Device $npDevices -MaxAgeInD
 if (!$staleNonPersistents)
 {
     Write-Output "[$(Get-Date -format G)] Nothing to do."
-    if (!$alreadyConnected) { Disconnect-AzureAD }
+    if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
     exit
 }
 
@@ -202,6 +202,6 @@ Write-Output "[$(Get-Date -format G)] Found $($staleNonPersistents.Count) device
 # remove devices (via wrapper function)
 $staleNonPersistents | Remove-AzureADDeviceSP
 
-if (!$alreadyConnected) { Disconnect-AzureAD }
+if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
 Write-Output "[$(Get-Date -format G)] Done."
 #endregion main
