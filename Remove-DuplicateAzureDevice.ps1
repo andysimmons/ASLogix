@@ -4,7 +4,7 @@
 .NOTES
     Name:   Remove-DuplicateAzureDevice.ps1
     Author: Andy Simmons
-    Date:   5/9/2018
+    Date:   5/29/2018
 
 .SYNOPSIS
     Removes stale non-persistent desktop devices from Azure AD.
@@ -20,6 +20,14 @@
     identical display names, and comparing the approximate last logon timestamp
     to the current time. 
 
+    By default, self-imposed throttling is used because Remove-AzureADDevice
+    doesn't take a collection as input, and using the pipeline results in one
+    job per device removal. At the time of this writing, only 100 jobs can be
+    submitted per 30 seconds per automation account.
+
+    See the Azure Subscription Limits document for current information:
+    https://docs.microsoft.com/en-us/azure/azure-subscription-service-limits
+
 .PARAMETER DeviceLimit
     Maximum number of devices to be removed. This is unlikely to be useful for
     anything except testing. The default value is 0 (no limit).
@@ -27,6 +35,12 @@
 .PARAMETER MaxAgeInDays
     Maximum number of days a device is allowed to go without logging in, before
     it's considered stale.
+
+.PARAMETER NewJobLimit
+    Maximum number of jobs to submit at a time.
+
+.PARAMETER NewJobIntervalSeconds
+    Interval between submitting new device removal jobs.
 
 .EXAMPLE
     Remove-DuplicateAzureDevice.ps1 -Device $nonPersistentDeviceCollection -MaxAgeInDays 7
@@ -43,7 +57,15 @@ param (
     
     [ValidateScript({$_ -ge 1})]
     [int]
-    $MaxAgeInDays = 14
+    $MaxAgeInDays = 14,
+
+    [ValidateScript({($_ -ge 1) -and ($_ -le 100)})]
+    [int]
+    $NewJobLimit = 33,
+
+    [ValidateScript({$_ -ge 1})]
+    [int]
+    $NewJobIntervalSeconds = 30
 )
 
 #region functions
@@ -86,11 +108,11 @@ function Select-StaleAzureADDevice
     )
     $now = Get-Date
 
-    Write-Verbose "[$(Get-Date -format G)] Grouping duplicate device objects."
+    Write-Verbose "[$(Get-Date -f G)] Grouping duplicate device objects."
     $groups = $Device | Sort-Object -Property 'DisplayName' | Group-Object -Property 'DisplayName'
     $i = 0
 
-    Write-Verbose "[$(Get-Date -format G)] Identifying stale devices."
+    Write-Verbose "[$(Get-Date -f G)] Identifying stale devices."
     foreach ($g in $groups)
     {
         $i++
@@ -101,14 +123,17 @@ function Select-StaleAzureADDevice
         }
         Write-Progress @wpParams
 
-        $devices = @($g.Group | Sort-Object -Property 'ApproximateLastLogonTimestamp' -Descending)
+        $devices = @($g.Group.Where({$_.ApproximateLastLogonTimestamp}) | Sort-Object -Property 'ApproximateLastLogonTimestamp' -Descending)
 
-        if (($now - $devices[0].ApproximateLastLogonTimestamp).TotalDays -le $MaxAgeInDays)
+        if ($devices)
         {
-            # if the most recent record isn't stale, skip it
-            $devices | Select-Object -Skip 1
+            if (($now - $devices[0].ApproximateLastLogonTimestamp).TotalDays -le $MaxAgeInDays)
+            {
+                # if the most recent record isn't stale, skip it
+                $devices | Select-Object -Skip 1
+            }
+            else { $devices }
         }
-        else { $devices }
     }
 }
 
@@ -141,8 +166,76 @@ function Remove-AzureADDeviceSP
         {
             if ($PSCmdlet.ShouldProcess($id, 'Remove')) 
             {
-                Remove-AzureADDevice -ObjectId "$id"
+                try
+                {
+                    Remove-AzureADDevice -ObjectId "$id" -ErrorAction Stop
+                    Write-Verbose "Device removed: $id"
+                }
+                catch 
+                {
+                    Write-Warning "Device removal failed: $id"
+                    Write-Warning $_.Exception.Message
+                }
             }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Throttles the rate at which objects are passed down the pipeline.
+#>
+function Limit-Pipeline
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [Object[]]
+        $InputObject,
+
+        [Parameter(Mandatory)]
+        [int]
+        $Limit,
+    
+        [Parameter(Mandatory, ParameterSetName = 'Seconds')]
+        [int]
+        $Seconds,
+
+        [Parameter(Mandatory, ParameterSetName = 'Milliseconds')]
+        $Milliseconds
+    )
+
+    begin 
+    {
+        switch ($PSCmdlet.ParameterSetName)
+        {
+            'Seconds'
+            { 
+                $delayMs = 1000 * $Seconds
+                $delayText = "$Seconds sec"
+            }
+            'Milliseconds'
+            { 
+                $delayMs = $Milliseconds
+                $delayText = "$Milliseconds ms" 
+            }
+        }
+        Write-Verbose "[$(Get-Date -f G)] Throttling pipeline to $Limit objects per $delayText."
+        $counter = 0
+    }
+
+    process
+    {
+        foreach ($object in $InputObject)
+        {
+            if ($counter -ge $Limit)
+            {
+                $counter = 0
+                Write-Verbose "[$(Get-Date -f G)] Pipeline blocked for $delayText."
+                Start-Sleep -Milliseconds $delayMs
+            }
+            $object
+            $counter++
         }
     }
 }
@@ -176,15 +269,15 @@ if (!$alreadyConnected)
     catch { throw "Couldn't connect to Azure AD. Bailing.`n$($_.Exception.Message)" }
 }
 
-Write-Output "[$(Get-Date -format G)] Pulling list of non-persistent Azure AD devices. This may take a few minutes."
+Write-Output "[$(Get-Date -f G)] Pulling list of non-persistent Azure AD devices. This may take a few minutes."
 $npDevices = Get-NonPersistentAzureADDevice
 
-Write-Output "[$(Get-Date -format G)] Analyzing $($npDevices.Count) devices."
+Write-Output "[$(Get-Date -f G)] Analyzing $($npDevices.Count) devices."
 $staleNonPersistents = @(Select-StaleAzureADDevice -Device $npDevices -MaxAgeInDays $MaxAgeInDays)
 
 if (!$staleNonPersistents)
 {
-    Write-Output "[$(Get-Date -format G)] Nothing to do."
+    Write-Output "[$(Get-Date -f G)] Nothing to do."
     if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
     exit
 }
@@ -197,11 +290,23 @@ if ($DeviceLimit -and ($DeviceLimit -lt $staleNonPersistents.Count))
     $staleNonPersistents = @($staleNonPersistents | Select-Object -First $DeviceLimit)
 }
 
-Write-Output "[$(Get-Date -format G)] Found $($staleNonPersistents.Count) device(s) eligible for removal."
+Write-Output "[$(Get-Date -f G)] Found $($staleNonPersistents.Count) device(s) eligible for removal."
+$staleBreakdown = $staleNonPersistents.DisplayName | 
+    Sort-Object | 
+    Group-Object -NoElement | 
+    Sort-Object -Property Count -Descending | 
+    Out-String
+Write-Verbose "[$(Get-Date -f G)] Stale device breakdown:`n`n$staleBreakdown"
 
-# remove devices (via wrapper function)
-$staleNonPersistents | Remove-AzureADDeviceSP
+# remove devices
+if ($NewJobLimit -or $NewJobIntervalSeconds)
+{
+    $staleNonPersistents |
+        Limit-Pipeline -Limit $NewJobLimit -Seconds $NewJobIntervalSeconds |
+        Remove-AzureADDeviceSP
+}
+else { $staleNonPersistents | Remove-AzureADDeviceSP }
 
 if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
-Write-Output "[$(Get-Date -format G)] Done."
+Write-Output "[$(Get-Date -f G)] Done."
 #endregion main
