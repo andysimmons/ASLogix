@@ -241,10 +241,7 @@ function Limit-Pipeline
                     Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity. Blocked for $delayMs ms."
                     Start-Sleep -Milliseconds $timesliceMs
                 }
-                else {
-                    
-                    Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity."
-                }
+                else { Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity." }
                 
                 $thisBatchStart = (Get-Date)
                 $nextBatchStart = ($thisBatchStart).AddMilliseconds($timesliceMs)
