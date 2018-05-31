@@ -211,17 +211,19 @@ function Limit-Pipeline
         {
             'Seconds'
             { 
-                $delayMs = 1000 * $Seconds
-                $delayText = "$Seconds sec"
+                $timesliceMs = 1000 * $Seconds
+                $timesliceText = "$Seconds sec"
             }
             'Milliseconds'
             { 
-                $delayMs = $Milliseconds
-                $delayText = "$Milliseconds ms" 
+                $timesliceMs = $Milliseconds
+                $timesliceText = "$Milliseconds ms" 
             }
         }
-        Write-Verbose "[$(Get-Date -f G)] Throttling pipeline to $Limit objects per $delayText."
+        Write-Verbose "[$(Get-Date -f G)] Throttling pipeline to $Limit objects per $timesliceText."
         $counter = 0
+        $thisBatchStart = Get-Date
+        $nextBatchStart = ($thisBatchStart).AddMilliseconds($timesliceMs)
     }
 
     process
@@ -230,9 +232,23 @@ function Limit-Pipeline
         {
             if ($counter -ge $Limit)
             {
+                $now = Get-Date
+                $delayMs = ($nextBatchStart - $now).TotalMilliseconds -as [int]
+                $velocityPct = [Math]::Round(100 * $timesliceMs / ($now - $thisBatchStart).TotalMilliseconds, 1)
+
+                if ($delayMs -gt 0) 
+                {
+                    Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity. Blocked for $delayMs ms."
+                    Start-Sleep -Milliseconds $timesliceMs
+                }
+                else {
+                    
+                    Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity."
+                }
+                
+                $thisBatchStart = (Get-Date)
+                $nextBatchStart = ($thisBatchStart).AddMilliseconds($timesliceMs)
                 $counter = 0
-                Write-Verbose "[$(Get-Date -f G)] Pipeline blocked for $delayText."
-                Start-Sleep -Milliseconds $delayMs
             }
             $object
             $counter++
@@ -307,6 +323,9 @@ if ($NewJobLimit -or $NewJobIntervalSeconds)
 }
 else { $staleNonPersistents | Remove-AzureADDeviceSP }
 
+if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
+Write-Output "[$(Get-Date -f G)] Done."
+#endregion main
 if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
 Write-Output "[$(Get-Date -f G)] Done."
 #endregion main
