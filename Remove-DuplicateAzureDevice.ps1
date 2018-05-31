@@ -230,6 +230,7 @@ function Limit-Pipeline
     {
         foreach ($object in $InputObject)
         {
+            # check throughput vs. bandwidth after each batch
             if ($counter -ge $Limit)
             {
                 $now = Get-Date
@@ -242,7 +243,8 @@ function Limit-Pipeline
                     Start-Sleep -Milliseconds $timesliceMs
                 }
                 else { Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity." }
-                
+             
+                # reset counter/timer for next batch of objects
                 $thisBatchStart = (Get-Date)
                 $nextBatchStart = ($thisBatchStart).AddMilliseconds($timesliceMs)
                 $counter = 0
@@ -320,9 +322,6 @@ if ($NewJobLimit -or $NewJobIntervalSeconds)
 }
 else { $staleNonPersistents | Remove-AzureADDeviceSP }
 
-if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
-Write-Output "[$(Get-Date -f G)] Done."
-#endregion main
 if (!$alreadyConnected) { Disconnect-AzureAD -WhatIf:$false }
 Write-Output "[$(Get-Date -f G)] Done."
 #endregion main
