@@ -97,6 +97,7 @@ function Get-NonPersistentAzureADDevice
 function Select-StaleAzureADDevice
 {
     [CmdletBinding()]
+    [OutputType([Microsoft.Open.AzureAD.Model.Device[]])]
     param (
         [Parameter(Mandatory)]
         [int]
@@ -123,7 +124,8 @@ function Select-StaleAzureADDevice
         }
         Write-Progress @wpParams
 
-        $devices = @($g.Group.Where({$_.ApproximateLastLogonTimestamp}) | Sort-Object -Property 'ApproximateLastLogonTimestamp' -Descending)
+        $devices = @($g.Group.Where({$_.ApproximateLastLogonTimestamp}) | 
+            Sort-Object -Property 'ApproximateLastLogonTimestamp' -Descending)
 
         if ($devices)
         {
@@ -240,7 +242,7 @@ function Limit-Pipeline
                 if ($delayMs -gt 0) 
                 {
                     Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity. Blocked for $delayMs ms."
-                    Start-Sleep -Milliseconds $timesliceMs
+                    Start-Sleep -Milliseconds $delayMs
                 }
                 else { Write-Verbose "[$(Get-Date -f G)] Pipeline velocity at $velocityPct% capacity." }
              

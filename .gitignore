@@ -1,2 +1,5 @@
 .vscode/launch.json
 out.txt
+*.csv
+*.xlsx
+*.txt
