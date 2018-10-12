@@ -48,11 +48,12 @@
     Interval between submitting new device removal jobs.
 
 .EXAMPLE
-    Remove-DuplicateAzureDevice.ps1 -MaxAgeInDays 28 -NewJobLimit 80 -WhatIf -Verbose
+    Remove-DuplicateAzureDevice.ps1 -MaxAgeInDays 28 -NewJobLimit 80 -Verbose -DeviceLimit 1000
 
-    Analyzes devices. In addition
-    to comparing relative login timestamps across duplicate device records, it will return every 
-    device that hasn't logged in within the past 7 days. 
+    Analyzes all AAD devices with a "ServerAD" trust type, and deletes up to 1000 stale devices.
+    Devices would be considered stale if they haven't logged on within 28 days, or if another
+    device with the same DisplayName has logged on more recently. Jobs will be throttled to 80
+    requests every 30 seconds (80% of the Azure-imposed limit, as of the time of this writing).
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param (
@@ -125,6 +126,7 @@ function Get-AzureADDeviceByTrustType
 function Select-StaleAzureADDevice
 {
     [CmdletBinding()]
+    [OutputType([Microsoft.Open.AzureAD.Model.Device[]])]
     param (
         [Parameter(Mandatory)]
         [int]
